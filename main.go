@@ -13,41 +13,33 @@ import (
 	"os"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// Global variable to hold our database connection pool.
+// db holds the connection pool to the database.
 var db *sql.DB
 
-// Global context.
+// ctx is a global context used for all database operations.
 var ctx = context.Background()
 
-// initDB initializes the connection to the PostgreSQL database
-// and ensures the necessary 'urls' table exists.
+// initDB connects to the PostgreSQL database and ensures the `urls` table exists.
 func initDB() {
-	// Get the database connection URL from an environment variable.
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
-		// Provide a default for local development.
-		databaseURL = "postgres://postgres:password@localhost:5432/url_shortener_db"
-		log.Println("DATABASE_URL not set, defaulting to local PostgreSQL")
+		log.Fatal("DATABASE_URL environment variable is not set")
 	}
 
 	var err error
-	// The "pgx" argument tells database/sql to use the pgx driver.
 	db, err = sql.Open("pgx", databaseURL)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v\n", err)
+		log.Fatalf("Unable to open database connection: %v\n", err)
 	}
 
-	// Ping the database to ensure a connection is established.
-	if err = db.Ping(); err != nil {
+	if err = db.PingContext(ctx); err != nil {
 		log.Fatalf("Unable to ping database: %v\n", err)
 	}
-
 	log.Println("Successfully connected to the database.")
 
-	// Create the 'urls' table if it doesn't already exist.
-	// This makes the application self-initializing.
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS urls (
 		id VARCHAR(8) PRIMARY KEY,
@@ -58,60 +50,50 @@ func initDB() {
 	if _, err = db.ExecContext(ctx, createTableSQL); err != nil {
 		log.Fatalf("Unable to create table: %v\n", err)
 	}
-
 	log.Println("Table 'urls' is ready.")
 }
 
+// generateShortURL creates a unique 8-character hash from a given URL.
 func generateShortURL(originalURL string) string {
 	hasher := md5.New()
 	hasher.Write([]byte(originalURL))
 	return hex.EncodeToString(hasher.Sum(nil))[:8]
 }
 
-// createURL now saves the URL mapping to the PostgreSQL database.
+// createURL inserts a new URL record into the database. If the URL already exists,
+// it returns the existing short ID without error.
 func createURL(originalURL string) (string, error) {
 	shortURL := generateShortURL(originalURL)
-
 	query := "INSERT INTO urls (id, original_url) VALUES ($1, $2)"
 
 	_, err := db.ExecContext(ctx, query, shortURL, originalURL)
 	if err != nil {
-		// Check if the error is a unique key violation (meaning the URL was already shortened).
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // 23505 is the code for unique_violation
-			log.Printf("URL %s already exists with ID %s", originalURL, shortURL)
-			return shortURL, nil // It's not an error, the link already exists.
+		// 23505 is the PostgreSQL error code for "unique_violation".
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return shortURL, nil // The URL already exists, which is not an error for us.
 		}
-		// For any other error, return it.
 		return "", fmt.Errorf("failed to save to database: %w", err)
 	}
-
 	return shortURL, nil
 }
 
-// getURL now retrieves the original URL from the PostgreSQL database.
+// getURL retrieves the original URL for a given short ID.
 func getURL(id string) (string, error) {
 	var originalURL string
-
 	query := "SELECT original_url FROM urls WHERE id = $1"
 
 	err := db.QueryRowContext(ctx, query, id).Scan(&originalURL)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return "", fmt.Errorf("URL not found")
+			return "", fmt.Errorf("URL not found for ID: %s", id)
 		}
 		return "", fmt.Errorf("error retrieving from database: %w", err)
 	}
-
 	return originalURL, nil
 }
 
-// --- HTTP Handlers ---
-
-func handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Welcome to the Go + PostgreSQL URL Shortener!")
-}
-
+// ShortUrlHandler handles POST requests to create a new short URL.
 func ShortUrlHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
@@ -122,16 +104,18 @@ func ShortUrlHandler(w http.ResponseWriter, r *http.Request) {
 		URL string `json:"url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		http.Error(w, "Invalid request body: please provide a JSON object with a 'url' key", http.StatusBadRequest)
 		return
 	}
 
 	shortURL_ID, err := createURL(data.URL)
 	if err != nil {
-		http.Error(w, "Failed to create short URL", http.StatusInternalServerError)
+		log.Printf("Error creating URL: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
+	// Construct the response URL dynamically based on the request.
 	host := r.Host
 	scheme := "http"
 	if r.Header.Get("X-Forwarded-Proto") == "https" {
@@ -149,6 +133,7 @@ func ShortUrlHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// redirectURLHandler handles GET requests to redirect short URLs to their original destination.
 func redirectURLHandler(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Path[len("/r/"):]
 	originalURL, err := getURL(id)
@@ -159,10 +144,9 @@ func redirectURLHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, originalURL, http.StatusFound)
 }
 
+// main is the entry point of the application.
 func main() {
-	// Initialize the database connection.
 	initDB()
-	// Defer closing the database connection until the application exits.
 	defer db.Close()
 
 	port := os.Getenv("PORT")
@@ -170,7 +154,6 @@ func main() {
 		port = "3000"
 	}
 
-	http.HandleFunc("/", handler)
 	http.HandleFunc("/shorten", ShortUrlHandler)
 	http.HandleFunc("/r/", redirectURLHandler)
 
