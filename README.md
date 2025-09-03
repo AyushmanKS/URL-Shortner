@@ -1,66 +1,102 @@
 # Go URL Shortener
 
-A simple, in-memory URL shortening service written in Go. This project provides a basic REST API to create short URLs and redirect users to the original long URL.
+A persistent URL shortening microservice built with Go and PostgreSQL. This project provides a REST API to create permanent short URLs and redirect users to their original destination. The application is deployed and live on Render.
+
+## Live Demo
+
+**Live Demo URL**: [https://url-shortner-pmol.onrender.com](https://url-shortner-pmol.onrender.com)
 
 ## Features
-- **Shorten Any URL**: Creates a fixed-length short ID for any valid URL.
-- **HTTP Redirection**: Redirects short URLs to their original destination.
-- **RESTful API**: Provides a clean, JSON-based API for creating links.
-- **Lightweight**: Built using only the Go standard library with no external dependencies.
+
+-   **Persistent Storage**: Uses a PostgreSQL database to permanently store URL mappings.
+-   **Shorten Any URL**: Creates a fixed-length 8-character ID for any valid URL.
+-   **HTTP Redirection**: Redirects short URLs to their original destination.
+-   **RESTful API**: Provides a clean, JSON-based API for creating links.
+-   **Ready for Deployment**: Configured to run on cloud platforms like Render using environment variables.
 
 ## Tech Stack
-- **Go (Golang)**
-- Go Standard Library (`net/http`, `encoding/json`, `crypto/md5`)
 
-## Prerequisites
-Before you begin, ensure you have the following installed on your system:
-- **Go**: Version 1.18 or higher.
-- **curl**: A command-line tool for making HTTP requests (or a similar API client like Postman).
+-   **Backend**: Go (Golang)
+-   **Database**: PostgreSQL
+-   **Go Libraries**: `net/http`, `database/sql`, `github.com/jackc/pgx/v5`
+-   **Deployment**: Render
 
-## Getting Started
+## How to Use the Live API
 
-Follow these steps to get the server up and running on your local machine.
+You can interact with the live, deployed service using any API client. The following examples use `curl`.
 
-#### 1. Save the Code
-Save the complete Go source code into a file named `main.go` inside your project directory.
+### 1. Create a Short URL
 
-#### 2. Run the Server
-Open your terminal, navigate to the project directory, and run the following command:
+To shorten a URL, send a `POST` request to the `/shorten` endpoint of the live service.
+
+First, create a `payload.json` file with the following content, replacing the URL with the one you want to shorten.
+
+```json
+{
+    "url": "https://github.com/AyushmanKS/URL-Shortner"
+}
+
+### Next, run the following command in your terminal. It will send the content of payload.json to the live server.
+
+# Note: This command uses the live URL
+```bash
+curl -X POST -H "Content-Type: application/json" --data "@payload.json" https://url-shortner-pmol.onrender.com/shorten
+```
+
+### The server will respond with the new, permanent short URL.
+```bash
+{"short_url":"https://url-shortner-pmol.onrender.com/r/xxxxxxxx"}
+```
+
+### 2. Use the Short URL
+Copy the short_url from the response and paste it into any web browser. You will be instantly redirected to the original destination.
+
+API Endpoints
+Endpoint	        Method	    Body (JSON)	                    Success Response (201 Created)	            Description
+/shorten	        POST	    {"url": "https://example.com"}	{"short_url": "https://.../r/{id}"}	        Creates a new, permanent short URL.
+/r/{short_id}	    GET	        (None)	                        (302 Found Redirect)	                    Redirects to the original URL.
+
+### Local Development Setup
+## To run this project on your local machine, you will need Go and PostgreSQL installed.
+
+```bash
+git clone https://github.com/AyushmanKS/URL-Shortner.git
+cd URL-Shortner
+```
+
+### 2. Set Up a Local PostgreSQL Database
+Make sure you have a PostgreSQL server running. Create a new database for this project.
+
+### 3. Configure Environment Variable
+The application is configured using a DATABASE_URL environment variable. You can set it in your terminal before running the app.
+
+```bash
+# Example for PowerShell:
+$env:DATABASE_URL="postgres://YOUR_USER:YOUR_PASSWORD@localhost:5432/YOUR_DB_NAME"
+
+# Example for Bash (Linux/macOS/Git Bash):
+export DATABASE_URL="postgres://YOUR_USER:YOUR_PASSWORD@localhost:5432/YOUR_DB_NAME"
+```
+
+### 4. Install Dependencies
+Run go mod tidy to download the required libraries (pgx).
+
+```bash
+go mod tidy
+```
+
+### 5. Run the Server
+Now you can start the server locally.
 
 ```bash
 go run main.go
 ```
 
-#### Starting URL Shortener...
-Starting URL Shortener...
-Server starting on port 3000...
-
-The server is now live and ready to accept requests. Keep this terminal window open.
-How to Use the API
-You can interact with the server using any API client. The following examples use curl.
-1. Shorten a New URL
-To shorten a URL, you need to send a POST request to the /shorten endpoint with the original URL in a JSON payload.
-Step 1: Create a JSON data file
-To avoid command-line quoting issues, it's best to place the JSON payload in a file. Create a new file in your project directory named payload.json and add the following content:
-
-{
-    "url": "https://www.google.com/search?q=golang+projects"
-}
-
-(You can replace the URL with any link you want to shorten.)
-Step 2: Send the request
-Now, open a new terminal window and run the following curl command. This command reads the data from the payload.json file.
-
-```bash
-curl -X POST -H "Content-Type: application/json" --data "@payload.json" http://localhost:3000/shorten
-```
-
-You have successfully created a short URL!
-2. Use the Short URL
-To use the short URL, simply copy the URL from the response and paste it into your web browser's address bar.
-Copy the URL: http://localhost:3000/redirect/c4b1a2d3
-Paste it into your browser and press Enter.
-You will be instantly redirected to the original long URL (https://www.google.com/search?q=golang+projects).
-
-How It Works
-This application uses an in-memory map to store the mapping between short IDs and original URLs. An MD5 hash of the original URL is used to generate an 8-character short ID.
+# The server will start on http://localhost:3000.
+### Deployment
+# This application is deployed on Render. The deployment process involves:
+# Pushing the code to a GitHub repository.
+# Creating a PostgreSQL instance on Render and obtaining its Internal Connection URL.
+# Creating a Web Service on Render connected to the GitHub repository.
+# Setting the DATABASE_URL environment variable in the Web Service settings to the Internal Connection URL from the database.
+# Render automatically builds and deploys the application on every push to the main branch.
