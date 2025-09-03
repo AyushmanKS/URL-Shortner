@@ -35,7 +35,7 @@ First, create a `payload.json` file with the following content, replacing the UR
 {
     "url": "https://github.com/AyushmanKS/URL-Shortner"
 }
-
+```
 ### Next, run the following command in your terminal. It will send the content of payload.json to the live server.
 
 # Note: This command uses the live URL
@@ -94,9 +94,9 @@ go run main.go
 
 # The server will start on http://localhost:3000.
 ### Deployment
-# This application is deployed on Render. The deployment process involves:
-# Pushing the code to a GitHub repository.
-# Creating a PostgreSQL instance on Render and obtaining its Internal Connection URL.
-# Creating a Web Service on Render connected to the GitHub repository.
-# Setting the DATABASE_URL environment variable in the Web Service settings to the Internal Connection URL from the database.
-# Render automatically builds and deploys the application on every push to the main branch.
+#### This application is deployed on Render. The deployment process involves:
+#### Pushing the code to a GitHub repository.
+#### Creating a PostgreSQL instance on Render and obtaining its Internal Connection URL.
+#### Creating a Web Service on Render connected to the GitHub repository.
+#### Setting the DATABASE_URL environment variable in the Web Service settings to the Internal Connection URL from the database.
+#### Render automatically builds and deploys the application on every push to the main branch.
